@@ -1,0 +1,108 @@
+version: "3.7"
+
+x-common-env: &common-env
+  DB_TYPE: postgresdb
+  DB_POSTGRESDB_DATABASE: n8n
+  DB_POSTGRESDB_HOST: postgres
+  DB_POSTGRESDB_PORT: 5432
+  DB_POSTGRESDB_USER: n8n
+  DB_POSTGRESDB_PASSWORD: password
+  N8N_ENCRYPTION_KEY: r3djGX2vPoeL9zKL
+  N8N_HOST: n8n.leonardocaloi.com.br
+  N8N_EDITOR_BASE_URL: https://n8n.leonardocaloi.com.br/
+  N8N_PROTOCOL: https
+  NODE_ENV: production
+  WEBHOOK_URL: https://n8n.leonardocaloi.com.br/
+  EXECUTIONS_MODE: queue
+  QUEUE_BULL_REDIS_HOST: redis_n8n
+  QUEUE_BULL_REDIS_PORT: 6379
+  QUEUE_BULL_REDIS_DB: 2
+  NODE_FUNCTION_ALLOW_EXTERNAL: moment,lodash,moment-with-locales
+  EXECUTIONS_DATA_PRUNE: 'true'
+  EXECUTIONS_DATA_MAX_AGE: 336
+
+x-common-deploy: &common-deploy
+  mode: replicated
+  placement:
+    constraints:
+      - node.role == manager
+  resources:
+    limits:
+      cpus: "1"
+      memory: 1024M
+
+services:
+  n8n_editor:
+    image: n8nio/n8n:latest
+    command: n8n start
+    networks:
+      - network_public
+    environment: *common-env
+    deploy:
+      <<: *common-deploy
+      replicas: 1
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.n8n_editor.rule=Host(`n8n.leonardocaloi.com.br`)
+        - traefik.http.routers.n8n_editor.entrypoints=websecure
+        - traefik.http.routers.n8n_editor.priority=1
+        - traefik.http.routers.n8n_editor.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.n8n_editor.service=n8n_editor
+        - traefik.http.services.n8n_editor.loadbalancer.server.port=5678
+        - traefik.http.services.n8n_editor.loadbalancer.passHostHeader=1
+
+  n8n_webhook:
+    image: n8nio/n8n:latest
+    command: n8n webhook
+    networks:
+      - network_public
+    environment: *common-env
+    deploy:
+      <<: *common-deploy
+      replicas: 2
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.n8n_webhook.rule=(Host(`n8n.leonardocaloi.com.br`))
+        - traefik.http.routers.n8n_webhook.entrypoints=websecure
+        - traefik.http.routers.n8n_webhook.priority=1
+        - traefik.http.routers.n8n_webhook.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.n8n_webhook.service=n8n_webhook
+        - traefik.http.services.n8n_webhook.loadbalancer.server.port=5678
+        - traefik.http.services.n8n_webhook.loadbalancer.passHostHeader=1
+
+  n8n_worker:
+    image: n8nio/n8n:latest
+    command: n8n worker --concurrency=10
+    networks:
+      - network_public
+    environment: *common-env
+    deploy:
+      <<: *common-deploy
+      replicas: 2
+
+  redis_n8n:
+    image: redis:latest
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data_n8n:/data
+    networks:
+      - network_public
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 2
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 1024M
+
+networks:
+  network_public:
+    name: network_public
+    external: true
+
+volumes:
+  redis_data_n8n:

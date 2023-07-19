@@ -1,0 +1,52 @@
+version: "3.7"
+
+services:
+  semaphore:
+    image: semaphoreui/semaphore:latest
+    networks:
+      - network_public
+    environment:
+      SEMAPHORE_DB_USER: semaphore
+      SEMAPHORE_DB_PASS: semaphore
+      SEMAPHORE_DB_HOST: postgres
+      SEMAPHORE_DB_PORT: 5432
+      SEMAPHORE_DB_DIALECT: postgres
+      SEMAPHORE_DB: semaphore
+      SEMAPHORE_PLAYBOOK_PATH: /tmp/semaphore/
+      SEMAPHORE_ADMIN_PASSWORD: changeme
+      SEMAPHORE_ADMIN_NAME: admin
+      SEMAPHORE_ADMIN_EMAIL: admin@localhost
+      SEMAPHORE_ADMIN: admin
+      SEMAPHORE_ACCESS_KEY_ENCRYPTION: gs72mPntFATGJs9qK0pQ0rKtfidlexiMjYCH9gWKhTU=
+      SEMAPHORE_LDAP_ACTIVATED: 'no'
+      SEMAPHORE_LDAP_HOST: dc01.local.example.com
+      SEMAPHORE_LDAP_PORT: '636'
+      SEMAPHORE_LDAP_NEEDTLS: 'yes'
+      SEMAPHORE_LDAP_DN_BIND: 'uid=bind_user,cn=users,cn=accounts,dc=local,dc=shiftsystems,dc=net'
+      SEMAPHORE_LDAP_PASSWORD: 'ldap_bind_account_password'
+      SEMAPHORE_LDAP_DN_SEARCH: 'dc=local,dc=example,dc=com'
+      SEMAPHORE_LDAP_SEARCH_FILTER: "(\u0026(uid=%s)(memberOf=cn=ipausers,cn=groups,cn=accounts,dc=local,dc=example,dc=com))"
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.semaphore.rule=(Host(`semaphore.leonardocaloi.com.br`))
+        - traefik.http.routers.semaphore.entrypoints=websecure
+        - traefik.http.routers.semaphore.priority=1
+        - traefik.http.routers.semaphore.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.semaphore.service=semaphore
+        - traefik.http.services.semaphore.loadbalancer.server.port=5678
+        - traefik.http.services.semaphore.loadbalancer.passHostHeader=1
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1024M
+
+networks:
+  network_public:
+    external: true
+    name: network_public
